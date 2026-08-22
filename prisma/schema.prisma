@@ -19,8 +19,9 @@ enum JobStatus {
 }
 
 model Job {
-  id            String    @id @default(uuid())
-  status        JobStatus @default(pending)
+  id             String    @id @default(uuid())
+  idempotencyKey String    @unique
+  status         JobStatus @default(pending)
   processed     Int       @default(0)
   accepted      Int       @default(0)
   rejected      Int       @default(0)
@@ -29,7 +30,7 @@ model Job {
   completedAt   DateTime?
   failureReason String?
   createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  updatedAt     DateTime  @updatedAt @default(now())
 
   cancellationRequests CancellationRequest[]
 
