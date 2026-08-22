@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { type Job } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { JobCreateInput } from 'generated/prisma/models';
+import { JobCreateInput, JobUpdateInput } from 'generated/prisma/models';
 
 @Injectable()
 export class JobsRepository {
@@ -23,6 +23,13 @@ export class JobsRepository {
 
   findAll(): Promise<Job[]> {
     return this.prisma.job.findMany();
+  }
+
+  update(id: string, data: JobUpdateInput): Promise<Job> {
+    return this.prisma.job.update({
+      where: { id },
+      data,
+    });
   }
 
   async queryRaw(idempotencyKey: string): Promise<Job[]> {

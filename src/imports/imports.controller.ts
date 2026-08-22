@@ -17,14 +17,14 @@ import {
   ApiPayloadTooLargeResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { JobsService } from '../jobs/jobs.service';
 import { NdjjsonFileInterceptor } from './interceptors/ndjson-file.interceptor';
+import { ImportsService } from './imports.service';
 import { ImportResponseRto } from './rto/import-response.rto';
 
 @ApiTags('imports')
 @Controller({ path: 'imports', version: '1' })
 export class ImportsController {
-  constructor(private readonly jobsService: JobsService) {}
+  constructor(private readonly importsService: ImportsService) {}
 
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
@@ -67,7 +67,7 @@ export class ImportsController {
       throw new BadRequestException('An NDJSON file is required');
     }
 
-    const job = await this.jobsService.createImportJob(
+    const job = await this.importsService.createImport(
       idempotencyKey.trim(),
       file.filename,
     );

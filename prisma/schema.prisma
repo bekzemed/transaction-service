@@ -38,7 +38,7 @@ model Job {
   @@map("jobs")
 }
 
-model Transaction {
+model TransactionLine {
   id            String   @id @default(uuid())
   transactionId String   @unique
   accountId     String
@@ -47,12 +47,13 @@ model Transaction {
   currency      String   @db.Char(3)
   timestamp     DateTime
   description   String?  @db.VarChar(500)
+  fingerprint   String   @unique @db.Char(64)
   createdAt     DateTime @default(now())
 
   @@index([accountId])
   @@index([merchantId])
   @@index([currency])
-  @@map("transactions")
+  @@map("transaction_lines")
 }
 
 model CancellationRequest {

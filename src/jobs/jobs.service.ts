@@ -1,28 +1,20 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import type { Job } from '../../generated/prisma/client';
+import type { JobUpdateInput } from 'generated/prisma/models';
 import { JobsRepository } from './jobs.repository';
-import { RabbitmqPublisherService } from '../rabbitmq-publisher/rabbitmq-publisher.service';
 
 @Injectable()
 export class JobsService {
-  constructor(
-    private readonly jobsRepository: JobsRepository,
-    private readonly rabbitmqPublisher: RabbitmqPublisherService,
-  ) {}
+  constructor(private readonly jobsRepository: JobsRepository) {}
 
-  async createImportJob(
-    idempotencyKey: string,
-    storageKey: string,
-  ): Promise<Job> {
+  async createImportJob(idempotencyKey: string): Promise<{
+    job: Job;
+    created: boolean;
+  }> {
     const result = await this.jobsRepository.queryRaw(idempotencyKey);
 
     if (result.length > 0) {
-      await this.rabbitmqPublisher.publishProcessTransactionJob({
-        jobId: result[0].id,
-        storageKey,
-      });
-
-      return result[0];
+      return { job: result[0], created: true };
     }
 
     const existing =
@@ -32,7 +24,11 @@ export class JobsService {
       throw new InternalServerErrorException('Failed to create import job');
     }
 
-    return existing;
+    return { job: existing, created: false };
+  }
+
+  update(jobId: string, data: JobUpdateInput): Promise<Job> {
+    return this.jobsRepository.update(jobId, data);
   }
 
   findImportJobById(id: string): Promise<Job | null> {

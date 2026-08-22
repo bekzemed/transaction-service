@@ -49,6 +49,9 @@ lerna-debug.log*
 # uploaded import files
 /uploads
 
+# large generated performance fixture (regenerate with npm run generate:manual-tests)
+/manual-test/
+
 # Runtime data
 pids
 *.pid
