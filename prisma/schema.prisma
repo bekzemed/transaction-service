@@ -1,0 +1,67 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum JobStatus {
+  pending
+  processing
+  completed
+  failed
+  cancelling
+  cancelled
+}
+
+model Job {
+  id            String    @id @default(uuid())
+  status        JobStatus @default(pending)
+  processed     Int       @default(0)
+  accepted      Int       @default(0)
+  rejected      Int       @default(0)
+  duplicates    Int       @default(0)
+  startedAt     DateTime?
+  completedAt   DateTime?
+  failureReason String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  cancellationRequests CancellationRequest[]
+
+  @@index([status])
+  @@map("jobs")
+}
+
+model Transaction {
+  id            String   @id @default(uuid())
+  transactionId String   @unique
+  accountId     String
+  merchantId    String
+  amount        Decimal  @db.Decimal(18, 2)
+  currency      String   @db.Char(3)
+  timestamp     DateTime
+  description   String?  @db.VarChar(500)
+  createdAt     DateTime @default(now())
+
+  @@index([accountId])
+  @@index([merchantId])
+  @@index([currency])
+  @@map("transactions")
+}
+
+model CancellationRequest {
+  id        String   @id @default(uuid())
+  jobId     String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@map("cancellation_requests")
+}
