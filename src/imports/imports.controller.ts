@@ -57,7 +57,7 @@ export class ImportsController {
     description: 'The uploaded file exceeds the allowed size',
   })
   async createImport(
-    @UploadedFile() file: Express.Multer.File | undefined,
+    @UploadedFile() file: Express.Multer.File,
     @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<ImportResponseRto> {
     if (!idempotencyKey?.trim()) {
@@ -67,7 +67,10 @@ export class ImportsController {
       throw new BadRequestException('An NDJSON file is required');
     }
 
-    const job = await this.jobsService.createImportJob(idempotencyKey.trim());
+    const job = await this.jobsService.createImportJob(
+      idempotencyKey.trim(),
+      file.filename,
+    );
 
     return ImportResponseRto.fromJob(job);
   }

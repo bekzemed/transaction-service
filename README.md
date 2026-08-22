@@ -33,6 +33,8 @@ $ npm install
 
 ## Compile and run the project
 
+Starts the API and the transaction processor together:
+
 ```bash
 # development
 $ npm run start
@@ -40,9 +42,12 @@ $ npm run start
 # watch mode
 $ npm run start:dev
 
-# production mode
+# production mode (build first)
+$ npm run build
 $ npm run start:prod
 ```
+
+Run either process alone with `npm run start:api:dev` or `npm run start:processor:dev`.
 
 ## Run tests
 

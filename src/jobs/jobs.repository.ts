@@ -26,17 +26,12 @@ export class JobsRepository {
   }
 
   async queryRaw(idempotencyKey: string): Promise<Job[]> {
-    console.log('idempotencyKey', idempotencyKey);
-
-    const result = await this.prisma.$queryRaw<
+    // if result is empty it means the job is already created
+    return this.prisma.$queryRaw<
       Job[]
     >` INSERT INTO "jobs" ("id", "idempotencyKey", "status")
     VALUES (gen_random_uuid(), ${idempotencyKey}, 'processing')
     ON CONFLICT ("idempotencyKey") DO NOTHING
     RETURNING *`;
-
-    console.log('result', result);
-
-    return result;
   }
 }

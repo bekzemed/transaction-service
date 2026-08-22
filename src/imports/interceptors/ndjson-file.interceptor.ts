@@ -1,12 +1,17 @@
 import { BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
+import {
+  createStorageKey,
+  STORAGE_KEY_EXTENSIONS,
+  type StorageKeyExtension,
+} from '../../storage/file-storage.service';
+import { getUploadsRoot } from '../../storage/storage.config';
 
 export const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
 
-const ALLOWED_EXTENSIONS = new Set(['.ndjson', '.jsonl']);
+const ALLOWED_EXTENSIONS = new Set<string>(STORAGE_KEY_EXTENSIONS);
 const ALLOWED_MIME_TYPES = new Set([
   'application/x-ndjson',
   'application/jsonl',
@@ -23,9 +28,17 @@ const ALLOWED_MIME_TYPES = new Set([
  */
 export const NdjjsonFileInterceptor = FileInterceptor('file', {
   storage: diskStorage({
-    destination: 'uploads',
+    // Absolute, so the API and the processor agree on the location regardless
+    // of the directory each process was started from.
+    destination: getUploadsRoot(),
     // Never trust the client-provided filename.
-    filename: (_req, _file, callback) => callback(null, randomUUID()),
+    filename: (_req, file, callback) =>
+      callback(
+        null,
+        createStorageKey(
+          extname(file.originalname).toLowerCase() as StorageKeyExtension,
+        ),
+      ),
   }),
   limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 1 },
   fileFilter: (_req, file, callback) => {
