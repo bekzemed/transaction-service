@@ -1,9 +1,12 @@
 import {
   BadRequestException,
   Controller,
+  Get,
   Headers,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Post,
   UploadedFile,
   UseInterceptors,
@@ -13,13 +16,17 @@ import {
   ApiBadRequestResponse,
   ApiBody,
   ApiConsumes,
+  ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiPayloadTooLargeResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { NdjjsonFileInterceptor } from './interceptors/ndjson-file.interceptor';
 import { ImportsService } from './imports.service';
 import { ImportResponseRto } from './rto/import-response.rto';
+import { ImportStatusRto } from './rto/import-status.rto';
 
 @ApiTags('imports')
 @Controller({ path: 'imports', version: '1' })
@@ -73,5 +80,27 @@ export class ImportsController {
     );
 
     return ImportResponseRto.fromJob(job);
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Get import status',
+    description:
+      'Returns the current status and progress of a specific import job.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Import job ID',
+    format: 'uuid',
+    example: 'f6a7f6de-6a52-4c4e-9d5e-df6a2f9b57a1',
+  })
+  @ApiOkResponse({ type: ImportStatusRto })
+  @ApiBadRequestResponse({ description: 'Invalid import job ID' })
+  @ApiNotFoundResponse({ description: 'Import job not found' })
+  async getImport(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ImportStatusRto> {
+    const job = await this.importsService.getImport(id);
+    return ImportStatusRto.fromJob(job);
   }
 }

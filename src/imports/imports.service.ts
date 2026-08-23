@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Job } from '../../generated/prisma/client';
 import { JobsService } from '../jobs/jobs.service';
 import { RabbitmqPublisherService } from '../rabbitmq-publisher/rabbitmq-publisher.service';
@@ -19,6 +19,16 @@ export class ImportsService {
         jobId: job.id,
         storageKey,
       });
+    }
+
+    return job;
+  }
+
+  async getImport(id: string): Promise<Job> {
+    const job = await this.jobsService.findImportJobById(id);
+
+    if (!job) {
+      throw new NotFoundException(`Import job ${id} not found`);
     }
 
     return job;
