@@ -74,7 +74,7 @@ export class RabbitmqConsumerService
 
     await this.channel.waitForConnect();
     this.logger.log(
-      `Consuming ${this.config.transactionQueue} (prefetch=${this.config.prefetch})`,
+      `Consuming ${this.config.transactionQueue} (prefetch=${this.config.prefetch} consumerTimeoutMs=${this.config.consumerTimeoutMs})`,
     );
   }
 

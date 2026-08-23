@@ -33,6 +33,7 @@ model Job {
   updatedAt     DateTime  @updatedAt @default(now())
 
   cancellationRequests CancellationRequest[]
+  transactionLines     TransactionLine[]
 
   @@index([status])
   @@map("jobs")
@@ -40,6 +41,7 @@ model Job {
 
 model TransactionLine {
   id            String   @id @default(uuid())
+  jobId         String
   transactionId String   @unique
   accountId     String
   merchantId    String
@@ -48,8 +50,12 @@ model TransactionLine {
   timestamp     DateTime
   description   String?  @db.VarChar(500)
   fingerprint   String   @unique @db.Char(64)
+  risk          Int?
   createdAt     DateTime @default(now())
 
+  job Job @relation(fields: [jobId], references: [id], onDelete: Restrict)
+
+  @@index([jobId])
   @@index([accountId])
   @@index([merchantId])
   @@index([currency])

@@ -36,8 +36,8 @@ export class JobsRepository {
     // if result is empty it means the job is already created
     return this.prisma.$queryRaw<
       Job[]
-    >` INSERT INTO "jobs" ("id", "idempotencyKey", "status")
-    VALUES (gen_random_uuid(), ${idempotencyKey}, 'processing')
+    >` INSERT INTO "jobs" ("id", "idempotencyKey", "status", "startedAt")
+    VALUES (gen_random_uuid(), ${idempotencyKey}, 'processing', NOW())
     ON CONFLICT ("idempotencyKey") DO NOTHING
     RETURNING *`;
   }

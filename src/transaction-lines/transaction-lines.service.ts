@@ -35,7 +35,7 @@ export class TransactionLinesService {
    * Normalize then validate a single parsed JSON value.
    * Returns a result object — never throws for record-level problems.
    */
-  validate(raw: unknown): ValidateResult {
+  validate(raw: unknown, jobId: string): ValidateResult {
     if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
       return this.reject(
         'INVALID_RECORD',
@@ -46,7 +46,7 @@ export class TransactionLinesService {
 
     const input = raw as RawTransactionFields;
 
-    let normalized: NormalizedTransaction;
+    let normalized: Omit<NormalizedTransaction, 'jobId'>;
     try {
       normalized = this.normalize(input);
     } catch (error) {
@@ -56,7 +56,7 @@ export class TransactionLinesService {
       throw error;
     }
 
-    return this.validateNormalized(normalized, raw);
+    return this.validateNormalized({ ...normalized, jobId }, raw);
   }
 
   /**
@@ -102,15 +102,33 @@ export class TransactionLinesService {
 
     return this.transactionLinesRepository.createManyAndReturn({
       data,
-      ...options,
+      skipDuplicates: options.skipDuplicates,
     });
+  }
+
+  /** Reads a page of this job's transaction lines in stable order for scoring. */
+  findBatch(
+    jobId: string,
+    skip: number,
+    take: number,
+  ): Promise<TransactionLine[]> {
+    return this.transactionLinesRepository.findBatch(jobId, skip, take);
+  }
+
+  /** Persists calculated risk scores, one per transaction line. */
+  updateRisks(
+    risks: { transactionLineId: string; risk: number }[],
+  ): Promise<void> {
+    return this.transactionLinesRepository.updateRisks(risks);
   }
 
   /**
    * Produces a deterministic field representation. Throws NormalizationError
    * for values that cannot be safely normalized.
    */
-  private normalize(input: RawTransactionFields): NormalizedTransaction {
+  private normalize(
+    input: RawTransactionFields,
+  ): Omit<NormalizedTransaction, 'jobId'> {
     return {
       transactionId: this.normalizeRequiredString(
         input.transactionId,

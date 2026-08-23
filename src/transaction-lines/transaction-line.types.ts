@@ -14,6 +14,7 @@ export type RejectionCode =
   | 'DESCRIPTION_TOO_LONG';
 
 export interface NormalizedTransaction {
+  jobId: string;
   transactionId: string;
   accountId: string;
   merchantId: string;
@@ -57,6 +58,8 @@ export interface PersistedTransactionLine {
   timestamp: Date;
   description: string | null;
   fingerprint: string;
+  risk: number | null;
+  jobId: string;
   createdAt: Date;
 }
 

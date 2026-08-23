@@ -20,7 +20,7 @@ describe('TransactionLinesService', () => {
   };
 
   it('normalizes and accepts a valid transaction', () => {
-    const result = service.validate(valid);
+    const result = service.validate(valid, 'job-1');
 
     expect(result.ok).toBe(true);
     if (!result.ok) {
@@ -28,6 +28,7 @@ describe('TransactionLinesService', () => {
     }
 
     expect(result.value).toEqual({
+      jobId: 'job-1',
       transactionId: 'txn-10001',
       accountId: 'acc-201',
       merchantId: 'merchant-18',
@@ -39,7 +40,7 @@ describe('TransactionLinesService', () => {
   });
 
   it('rejects unsupported currency after normalizing the code', () => {
-    const result = service.validate({ ...valid, currency: 'zzz' });
+    const result = service.validate({ ...valid, currency: 'zzz' }, 'job-1');
 
     expect(result.ok).toBe(false);
     if (result.ok) {
@@ -50,7 +51,7 @@ describe('TransactionLinesService', () => {
   });
 
   it('rejects invalid amount', () => {
-    const result = service.validate({ ...valid, amount: 0 });
+    const result = service.validate({ ...valid, amount: 0 }, 'job-1');
 
     expect(result.ok).toBe(false);
     if (result.ok) {
@@ -61,7 +62,7 @@ describe('TransactionLinesService', () => {
   });
 
   it('rejects non-object records without throwing', () => {
-    const result = service.validate(['not', 'an', 'object']);
+    const result = service.validate(['not', 'an', 'object'], 'job-1');
 
     expect(result.ok).toBe(false);
     if (result.ok) {
