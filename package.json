@@ -32,7 +32,8 @@
     "migrate:reset": "prisma migrate reset",
     "db:studio": "prisma studio",
     "import:concurrent": "node scripts/concurrent-import.mjs",
-    "generate:manual-tests": "node scripts/generate-manual-tests.mjs"
+    "generate:manual-tests": "node scripts/generate-manual-tests.mjs",
+    "generate:data": "node scripts/generate-data.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
