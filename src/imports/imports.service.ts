@@ -1,5 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import type { Job } from '../../generated/prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type { CancellationRequest, Job } from '../../generated/prisma/client';
+import { CancellationRequestsService } from '../cancellation-requests/cancellation-requests.service';
 import { JobsService } from '../jobs/jobs.service';
 import { RabbitmqPublisherService } from '../rabbitmq-publisher/rabbitmq-publisher.service';
 import { TransactionLinesRepository } from '../transaction-lines/transaction-lines.repository';
@@ -22,6 +27,7 @@ export class ImportsService {
     private readonly jobsService: JobsService,
     private readonly rabbitmqPublisher: RabbitmqPublisherService,
     private readonly transactionLinesRepository: TransactionLinesRepository,
+    private readonly cancellationRequestsService: CancellationRequestsService,
   ) {}
 
   async createImport(idempotencyKey: string, storageKey: string): Promise<Job> {
@@ -46,6 +52,29 @@ export class ImportsService {
     }
 
     return job;
+  }
+
+  async requestCancellation(
+    id: string,
+    reason?: string | null,
+  ): Promise<CancellationRequest> {
+    const job = await this.getImport(id);
+
+    if (job.status !== 'pending' && job.status !== 'processing') {
+      throw new BadRequestException(
+        `Import job ${id} cannot be cancelled because its status is ${job.status}`,
+      );
+    }
+
+    const cancellationRequest =
+      await this.cancellationRequestsService.createCancellationRequest(
+        id,
+        reason,
+      );
+
+    await this.jobsService.update(id, { status: 'cancelling' });
+
+    return cancellationRequest;
   }
 
   async getImportSummary(id: string): Promise<ImportSummaryRto> {

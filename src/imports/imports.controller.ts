@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   Headers,
@@ -25,6 +26,8 @@ import {
 } from '@nestjs/swagger';
 import { NdjjsonFileInterceptor } from './interceptors/ndjson-file.interceptor';
 import { ImportsService } from './imports.service';
+import { ImportCancelDto } from './dto/import-cancel.dto';
+import { ImportCancelRto } from './rto/import-cancel.rto';
 import { ImportResponseRto } from './rto/import-response.rto';
 import { ImportStatusRto } from './rto/import-status.rto';
 import { ImportSummaryRto } from './rto/import-summary.rto';
@@ -103,6 +106,43 @@ export class ImportsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ImportSummaryRto> {
     return this.importsService.getImportSummary(id);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Request import cancellation',
+    description:
+      'Records a cancellation request and sets the job status to cancelling. ' +
+      'Allowed only while the job is pending or processing. ' +
+      'An optional reason may be supplied in the request body. ' +
+      'If a request already exists for this job, the existing request is returned. ' +
+      'The job is marked cancelled later by the processor, not by this endpoint.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Import job ID',
+    format: 'uuid',
+    example: 'f6a7f6de-6a52-4c4e-9d5e-df6a2f9b57a1',
+  })
+  @ApiBody({ type: ImportCancelDto, required: false })
+  @ApiAcceptedResponse({ type: ImportCancelRto })
+  @ApiBadRequestResponse({
+    description: 'Invalid import job ID, or job is not pending or processing',
+  })
+  @ApiNotFoundResponse({ description: 'Import job not found' })
+  async cancelImport(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body?: ImportCancelDto,
+  ): Promise<ImportCancelRto> {
+    if (body?.reason != null && typeof body.reason !== 'string') {
+      throw new BadRequestException('reason must be a string');
+    }
+
+    const reason = body?.reason?.trim() ? body.reason.trim() : null;
+    const cancellationRequest =
+      await this.importsService.requestCancellation(id, reason);
+    return ImportCancelRto.fromCancellationRequest(cancellationRequest);
   }
 
   @Get(':id')
