@@ -1,160 +1,183 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Transaction Service
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+High-throughput transaction import and reconciliation API. The HTTP API and the RabbitMQ processor run as separate Node.js processes. PostgreSQL stores jobs and transaction lines; RabbitMQ carries import work.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## How to run the project
 
-## Description
+**Prerequisites:** Docker. Node.js 20+ and npm are only needed for host development (option B).
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+**Option A — API, processor, PostgreSQL, and RabbitMQ in Docker**
 
 ```bash
-$ npm install
+docker compose up --build
 ```
 
-## Compile and run the project
+This applies migrations, then starts the API and processor. The API listens on `http://localhost:3000`. OpenAPI docs are at `http://localhost:3000/docs`. RabbitMQ management UI is at `http://localhost:15672` (`rabbitmq` / `rabbitmq`).
 
-Starts the API and the transaction processor together:
+**Option B — API and processor on the host**
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode (build first)
-$ npm run build
-$ npm run start:prod
+npm install
+cp .env.example .env
+docker compose up -d postgres rabbitmq
+npx prisma generate
+npm run migrate:dev
+npm run start:dev
 ```
 
-Run either process alone with `npm run start:api:dev` or `npm run start:processor:dev`.
+## How to run migrations
 
-## Event loop monitoring
+Prisma reads `DATABASE_URL` from `.env`. Generate the client after install or schema changes:
 
-Both the API process and the processor process log Node.js event-loop health on a timer (default 10 seconds; override with `MONITORING_INTERVAL_MS`). Metrics are logs only — there is no `/metrics` HTTP endpoint, so scraping does not compete with latency-sensitive routes.
+```bash
+npx prisma generate
+```
 
-Each line includes:
+Apply migrations:
 
-- **Event-loop delay** (`mean`, `p50`, `p99`, `max` in milliseconds) from `perf_hooks.monitorEventLoopDelay()`
-- **Event-loop utilization** for the sampling window from `performance.eventLoopUtilization()`
-- **Process CPU usage** as a percentage of one core from `process.cpuUsage()` (can exceed 100% when worker threads use other cores)
-- **Heap usage** (`heapUsedBytes`, `heapTotalBytes`) and **RSS** from `process.memoryUsage()`
+```bash
+# local development (applies pending migrations and regenerates the client)
+npm run migrate:dev
 
-### How event-loop blocking is detected
+# apply already-created migrations without prompting (CI / production)
+npm run migrate:deploy
 
-`monitorEventLoopDelay()` schedules a timer at a 20 ms resolution and records how late it fires. If the main thread is busy with synchronous work, that timer runs late and delay `p99` / `max` rise. Event-loop utilization approaching `1.0` in the same window confirms the loop spent almost all of its time in JavaScript rather than idle.
+# check whether the database is in sync
+npm run migrate:status
+```
 
-### Thresholds that may indicate a problem
+Create a new migration from schema changes without applying it:
 
-These are starting points, not hard alerts. Look for values that stay elevated across several samples, not a single spike.
+```bash
+npm run migrate:create
+```
 
-| Signal | Warning | Problem |
-| --- | --- | --- |
-| Delay p99 | > 50 ms | > 100 ms |
-| Delay max | > 100 ms | > 250 ms |
-| Event-loop utilization | > 0.7 | > 0.9 |
-| CPU percent (main-thread bound) | high together with high utilization | ~100%+ together with high delay |
-| Heap | `heapUsed` climbing toward `heapTotal` | repeated growth after GC, or RSS rising without bound |
+Reset the local database (drops data, reapplies all migrations):
 
-Idle delay of ~20 ms is expected because that is the histogram resolution.
+```bash
+npm run migrate:reset
+```
 
-### CPU saturation vs downstream I/O latency
+Browse data with Prisma Studio:
 
-**CPU saturation** shows up as high `cpuPercent` *and* high event-loop utilization / delay. The process is busy executing JavaScript (or, on the processor, worker-thread risk scoring that still counts toward `process.cpuUsage()`).
+```bash
+npm run db:studio
+```
 
-**Downstream I/O latency** (Postgres, RabbitMQ, disk) looks different: event-loop delay and utilization stay low because `await` yields the loop, but jobs or HTTP responses are still slow. The loop is healthy; the wait is outside the process.
+## How to generate test data
 
-### What in this codebase can block the event loop
+Generate an NDJSON import fixture under `test-files/`:
 
-- **Processor, main thread:** `JSON.parse` and validation of each import batch (`parseTransactions`), plus building fingerprint input. Batches are bounded (`IMPORT_BATCH_SIZE`, default 100) so this work yields at `await` points between batches.
-- **Processor, not the loop:** risk scoring runs on the worker-thread pool, so the simulated CPU loop does not stall message handling or database I/O.
-- **API:** Multer streams the upload to disk (not into memory). Request handlers then do relatively small Prisma / RabbitMQ work. Large NDJSON parsing does not run in the API process.
+```bash
+# 1000 records (default)
+npm run generate:data
 
-### How latency-sensitive endpoints are protected
+# custom record count
+npm run generate:data -- --records=1000
+npm run generate:data --records=500000
+```
 
-- The API and the processor are **separate Node processes**. Import parsing, validation, persistence, and risk scoring never share the API event loop, so `GET /health/*`, `GET /v1/imports/:id`, cancel, summary, and rejection paging stay off the heavy path.
-- Uploads are streamed to disk; the create-import handler only writes a job row and publishes a queue message.
-- RabbitMQ `prefetch` caps how many jobs the processor has in flight.
-- Monitoring itself is a cheap snapshot plus `console`-style log on an `unref`'d interval, and is not exposed over HTTP.
+The file is written to `test-files/transactions-<count>.ndjson`. Upload it with:
 
-## Run tests
+```bash
+curl -X POST http://localhost:3000/v1/imports \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -F "file=@test-files/transactions-1000.ndjson"
+```
+
+Specialized fixtures (unique, duplicates, mixed valid/invalid, large files) can be generated with `npm run generate:manual-tests` if you have a source NDJSON at `~/Downloads/transactions.ndjson`.
+
+## How to start all required processes
+
+Four processes are required: PostgreSQL, RabbitMQ, the API, and the processor.
+
+**Docker (recommended)**
+
+```bash
+docker compose up --build
+```
+
+The API and processor share an `uploads` volume. Compose waits for PostgreSQL and RabbitMQ to be healthy, runs `prisma migrate deploy`, then starts both Node processes. To run only the databases (for host development):
+
+```bash
+docker compose up -d postgres rabbitmq
+```
+
+**Host API and processor**
+
+Start both together (recommended):
+
+```bash
+npm run start:dev
+```
+
+Or start each process in its own terminal:
+
+```bash
+npm run start:api:dev
+npm run start:processor:dev
+```
+
+Other modes:
+
+```bash
+# without watch
+npm run start
+
+# production (build first)
+npm run build
+npm run start:prod
+```
+
+The API accepts uploads and publishes jobs. The processor consumes `PROCESS_TRANSACTION_JOB` messages, parses NDJSON, persists transaction lines, and scores risk. Both processes must share the same `UPLOADS_DIR` and RabbitMQ settings.
+
+## How to run tests
 
 ```bash
 # unit tests
-$ npm run test
+npm run test
+
+# watch mode
+npm run test:watch
+
+# coverage
+npm run test:cov
 
 # e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run test:e2e
 ```
 
-## Manual tests
-
-- [Concurrent import idempotency test](docs/concurrent-import-idempotency-test.md) — verifies that parallel `POST /v1/imports` requests with the same file and `Idempotency-Key` return the same job and create only one database row.
+A concurrent idempotency check against a running API:
 
 ```bash
 npm run import:concurrent
 ```
 
-## Deployment
+See [docs/concurrent-import-idempotency-test.md](docs/concurrent-import-idempotency-test.md) for details.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Environment variables
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Copy `.env.example` to `.env` and adjust as needed. Values in `.env.example` are for host processes talking to Compose PostgreSQL and RabbitMQ on localhost. The API and processor containers get `DATABASE_URL`, `RABBITMQ_URL`, and `UPLOADS_DIR` from `docker-compose.yml` so they use Docker DNS and the shared uploads volume.
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+| Variable                                   | Default                                   | Description                                                                  |
+| ------------------------------------------ | ----------------------------------------- | ---------------------------------------------------------------------------- |
+| `DATABASE_URL`                             | —                                         | PostgreSQL connection string. Required.                                      |
+| `PORT`                                     | `3000`                                    | API listen port.                                                             |
+| `RABBITMQ_URL`                             | `amqp://rabbitmq:rabbitmq@localhost:5672` | AMQP connection URL.                                                         |
+| `RABBITMQ_IMPORT_EXCHANGE`                 | `import.exchange`                         | Exchange used to publish import jobs.                                        |
+| `RABBITMQ_TRANSACTION_QUEUE`               | `transaction.jobs`                        | Queue the processor consumes.                                                |
+| `RABBITMQ_PROCESS_TRANSACTION_ROUTING_KEY` | `PROCESS_TRANSACTION_JOB`                 | Routing key for import jobs.                                                 |
+| `RABBITMQ_PREFETCH`                        | `5`                                       | Max unacked jobs the processor holds at once.                                |
+| `RABBITMQ_CONSUMER_TIMEOUT_MINUTES`        | `60`                                      | Broker consumer acknowledgement timeout.                                     |
+| `UPLOADS_DIR`                              | `uploads`                                 | Directory for uploaded NDJSON files. Must be the same for API and processor. |
+| `UPLOADS_RETENTION_HOURS`                  | `24`                                      | Age after which unused uploads are deleted. Set `0` to disable the sweeper.  |
+| `IMPORT_BATCH_SIZE`                        | `100`                                     | Transaction lines parsed and persisted per batch.                            |
+| `IMPORT_MAX_LINE_BYTES`                    | `65536`                                   | Max size of a single NDJSON line.                                            |
+| `RISK_BATCH_SIZE`                          | `100`                                     | Transaction lines sent to the risk worker pool per batch.                    |
+| `RISK_SIMULATION_MS`                       | `2000`                                    | Simulated CPU work per risk score (milliseconds).                            |
+| `MONITORING_INTERVAL_MS`                   | `10000`                                   | Interval for event-loop health logs.                                         |
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Known limitations
 
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
-# transaction-service
+1. Cancelled jobs can not be resumed
+2. Failed jobs can not be retried
