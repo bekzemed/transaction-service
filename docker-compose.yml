@@ -1,0 +1,126 @@
+x-app: &app
+  build: .
+  image: financial-platform:local
+  init: true
+  environment: &app-environment
+    DATABASE_URL: postgresql://postgres:postgres@postgres:5432/financial_platform
+    RABBITMQ_URL: amqp://rabbitmq:rabbitmq@rabbitmq:5672
+    RABBITMQ_IMPORT_EXCHANGE: ${RABBITMQ_IMPORT_EXCHANGE:-import.exchange}
+    RABBITMQ_TRANSACTION_QUEUE: ${RABBITMQ_TRANSACTION_QUEUE:-transaction.jobs}
+    RABBITMQ_PROCESS_TRANSACTION_ROUTING_KEY: ${RABBITMQ_PROCESS_TRANSACTION_ROUTING_KEY:-PROCESS_TRANSACTION_JOB}
+    RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-5}
+    RABBITMQ_CONSUMER_TIMEOUT_MINUTES: ${RABBITMQ_CONSUMER_TIMEOUT_MINUTES:-60}
+    UPLOADS_DIR: /app/uploads
+    UPLOADS_RETENTION_HOURS: ${UPLOADS_RETENTION_HOURS:-24}
+    IMPORT_BATCH_SIZE: ${IMPORT_BATCH_SIZE:-500}
+    IMPORT_MAX_LINE_BYTES: ${IMPORT_MAX_LINE_BYTES:-65536}
+    RISK_BATCH_SIZE: ${RISK_BATCH_SIZE:-100}
+    RISK_SIMULATION_MS: ${RISK_SIMULATION_MS:-500}
+    PORT: ${PORT:-3000}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: financial-platform-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: financial_platform
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U postgres -d financial_platform && PGPASSWORD=postgres psql -U postgres -d financial_platform -c "SELECT 1" >/dev/null',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: financial-platform-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbitmq
+      RABBITMQ_DEFAULT_PASS: rabbitmq
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    container_name: financial-platform-migrate
+    command: npx prisma migrate deploy
+    environment:
+      <<: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  api:
+    <<: *app
+    container_name: financial-platform-api
+    command: node dist/src/main.js
+    ports:
+      - '${PORT:-3000}:3000'
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health/ready').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  processor:
+    <<: *app
+    container_name: financial-platform-processor
+    command: node dist/src/processor.js
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  uploads_data:

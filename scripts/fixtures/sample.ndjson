@@ -1,0 +1,2 @@
+{"transactionId":"txn-10001","accountId":"acc-201","merchantId":"merchant-18","amount":145.75,"currency":"USD","timestamp":"2026-07-20T10:25:00.000Z","description":"Subscription payment"}
+{"transactionId":"txn-10002","accountId":"acc-202","merchantId":"merchant-19","amount":89.5,"currency":"EUR","timestamp":"2026-07-20T11:00:00.000Z","description":"One-time purchase"}

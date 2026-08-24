@@ -1,0 +1,89 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum JobStatus {
+  pending
+  processing
+  completed
+  failed
+  cancelling
+  cancelled
+}
+
+model Job {
+  id             String    @id @default(uuid())
+  idempotencyKey String    @unique
+  status         JobStatus @default(pending)
+  processed     Int       @default(0)
+  accepted      Int       @default(0)
+  rejected      Int       @default(0)
+  duplicates    Int       @default(0)
+  startedAt     DateTime?
+  completedAt   DateTime?
+  failureReason String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt @default(now())
+
+  cancellationRequest        CancellationRequest?
+  transactionLines           TransactionLine[]
+  rejectedTransactionLines   RejectedTransactionLine[]
+
+  @@index([status])
+  @@map("jobs")
+}
+
+model TransactionLine {
+  id            String   @id @default(uuid())
+  jobId         String
+  transactionId String   @unique
+  accountId     String
+  merchantId    String
+  amount        Decimal  @db.Decimal(18, 2)
+  currency      String   @db.Char(3)
+  timestamp     DateTime
+  description   String?  @db.VarChar(500)
+  fingerprint   String   @unique @db.Char(64)
+  risk          Int?
+  createdAt     DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Restrict)
+
+  @@index([jobId])
+  @@index([risk])
+  @@map("transaction_lines")
+}
+
+model CancellationRequest {
+  id        String   @id @default(uuid())
+  jobId     String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("cancellation_requests")
+}
+
+model RejectedTransactionLine {
+  id         String   @id @default(uuid())
+  jobId      String
+  lineNumber Int
+  reason     String
+  message    String
+  rawValue   String
+  createdAt  DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, lineNumber])
+  @@index([jobId])
+  @@map("rejected_transaction_lines")
+}
