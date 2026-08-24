@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CancellationRequestsModule } from '../cancellation-requests/cancellation-requests.module';
 import { JobsModule } from '../jobs/jobs.module';
 import { RiskCalculationService } from './risk/risk-calculation.service';
 import { RiskWorkerPool } from './risk/risk-worker-pool';
@@ -7,7 +8,7 @@ import { TransactionLinesRepository } from './transaction-lines.repository';
 import { TransactionLinesService } from './transaction-lines.service';
 
 @Module({
-  imports: [JobsModule],
+  imports: [JobsModule, CancellationRequestsModule],
   providers: [
     TransactionLinesRepository,
     TransactionLinesService,

@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { createInterface } from 'node:readline';
+import { CancellationRequestsService } from '../cancellation-requests/cancellation-requests.service';
 import { JobsService } from '../jobs/jobs.service';
 import { RabbitmqConsumerService } from '../rabbitmq-consumer/rabbitmq-consumer.service';
 import type { ProcessTransactionJobMessage } from '../rabbitmq/rabbitmq.messages';
@@ -33,6 +34,7 @@ export class TransactionLineHandler implements OnModuleInit {
     private readonly transactionLinesService: TransactionLinesService,
     private readonly jobsService: JobsService,
     private readonly riskCalculationService: RiskCalculationService,
+    private readonly cancellationRequestsService: CancellationRequestsService,
   ) {}
 
   onModuleInit(): void {
@@ -66,6 +68,10 @@ export class TransactionLineHandler implements OnModuleInit {
         batch.push({ lineNumber, content });
 
         if (batch.length >= this.batchSize) {
+          if (await this.cancelJobIfRequested(message.jobId, counts)) {
+            return;
+          }
+
           const result = await this.processBatchValidation(
             batch,
             message.jobId,
@@ -79,6 +85,10 @@ export class TransactionLineHandler implements OnModuleInit {
       }
 
       if (batch.length > 0) {
+        if (await this.cancelJobIfRequested(message.jobId, counts)) {
+          return;
+        }
+
         const result = await this.processBatchValidation(batch, message.jobId);
         counts.processed += batch.length;
         counts.rejected += result.rejected.length;
@@ -98,7 +108,12 @@ export class TransactionLineHandler implements OnModuleInit {
         `rejected=${counts.rejected} duplicates=${counts.duplicates}`,
     );
 
-    await this.calculateTransactionRisk(message.jobId);
+    const cancelledDuringRisk = await this.calculateTransactionRisk(
+      message.jobId,
+    );
+    if (cancelledDuringRisk) {
+      return;
+    }
 
     await this.jobsService.update(message.jobId, {
       status: 'completed',
@@ -111,13 +126,17 @@ export class TransactionLineHandler implements OnModuleInit {
   /**
    * Pages through transaction lines with skip/limit and scores each batch on
    * the worker pool. Risk scores are persisted per batch before the next
-   * batch is fetched.
+   * batch is fetched. Returns true when the job was cancelled mid-scoring.
    */
-  private async calculateTransactionRisk(jobId: string): Promise<void> {
+  private async calculateTransactionRisk(jobId: string): Promise<boolean> {
     let skip = 0;
     let scored = 0;
 
     for (;;) {
+      if (await this.cancelJobIfRequested(jobId)) {
+        return true;
+      }
+
       const lines = await this.transactionLinesService.findBatch(
         jobId,
         skip,
@@ -143,6 +162,33 @@ export class TransactionLineHandler implements OnModuleInit {
     }
 
     this.logger.log(`Job ${jobId} risk calculation complete: scored=${scored}`);
+    return false;
+  }
+
+  /**
+   * If a cancellation request exists for this job, persist terminal cancelled
+   * status (and any validation counts so far) and return true so the handler
+   * can exit without throwing — the queue message must be acked.
+   */
+  private async cancelJobIfRequested(
+    jobId: string,
+    counts?: JobProgressCounts,
+  ): Promise<boolean> {
+    const cancellationRequest =
+      await this.cancellationRequestsService.findByJobId(jobId);
+
+    if (!cancellationRequest) {
+      return false;
+    }
+
+    await this.jobsService.update(jobId, {
+      ...(counts ?? {}),
+      status: 'cancelled',
+      completedAt: new Date(),
+    });
+
+    this.logger.log(`Job ${jobId} cancelled`);
+    return true;
   }
 
   /**

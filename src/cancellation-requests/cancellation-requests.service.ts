@@ -8,6 +8,10 @@ export class CancellationRequestsService {
     private readonly cancellationRequestsRepository: CancellationRequestsRepository,
   ) {}
 
+  async findByJobId(jobId: string): Promise<CancellationRequest | null> {
+    return this.cancellationRequestsRepository.findByJobId(jobId);
+  }
+
   async createCancellationRequest(
     jobId: string,
     reason?: string | null,
