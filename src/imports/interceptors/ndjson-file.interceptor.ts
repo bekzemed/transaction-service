@@ -40,7 +40,15 @@ export const NdjjsonFileInterceptor = FileInterceptor('file', {
         ),
       ),
   }),
-  limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 1 },
+  limits: {
+    fileSize: MAX_FILE_SIZE_BYTES,
+    files: 1,
+    fields: 8,
+    fieldSize: 1024,
+    fieldNameSize: 100,
+    parts: 10,
+    headerPairs: 50,
+  },
   fileFilter: (_req, file, callback) => {
     const extension = extname(file.originalname).toLowerCase();
     if (

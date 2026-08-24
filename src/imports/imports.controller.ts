@@ -28,9 +28,11 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { CleanupUploadedFileInterceptor } from './interceptors/cleanup-uploaded-file.interceptor';
 import { NdjjsonFileInterceptor } from './interceptors/ndjson-file.interceptor';
 import { ImportsService } from './imports.service';
 import { ImportCancelDto } from './dto/import-cancel.dto';
+import { parseCancelReason, parseIdempotencyKey } from './request-limits';
 import { ImportCancelRto } from './rto/import-cancel.rto';
 import { ImportRejectionRto } from './rto/import-rejection.rto';
 import { ImportResponseRto } from './rto/import-response.rto';
@@ -44,7 +46,7 @@ export class ImportsController {
 
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
-  @UseInterceptors(NdjjsonFileInterceptor)
+  @UseInterceptors(CleanupUploadedFileInterceptor, NdjjsonFileInterceptor)
   @ApiOperation({
     summary: 'Create an import',
     description:
@@ -76,15 +78,12 @@ export class ImportsController {
     @UploadedFile() file: Express.Multer.File,
     @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<ImportResponseRto> {
-    if (!idempotencyKey?.trim()) {
-      throw new BadRequestException('Idempotency-Key header is required');
-    }
     if (!file) {
       throw new BadRequestException('An NDJSON file is required');
     }
 
     const job = await this.importsService.createImport(
-      idempotencyKey.trim(),
+      parseIdempotencyKey(idempotencyKey),
       file.filename,
     );
 
@@ -201,11 +200,7 @@ export class ImportsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body?: ImportCancelDto,
   ): Promise<ImportCancelRto> {
-    if (body?.reason != null && typeof body.reason !== 'string') {
-      throw new BadRequestException('reason must be a string');
-    }
-
-    const reason = body?.reason?.trim() ? body.reason.trim() : null;
+    const reason = parseCancelReason(body?.reason);
     const cancellationRequest = await this.importsService.requestCancellation(
       id,
       reason,

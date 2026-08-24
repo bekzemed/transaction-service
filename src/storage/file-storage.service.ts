@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { createReadStream, type ReadStream } from 'node:fs';
-import { mkdir, unlink } from 'node:fs/promises';
+import { mkdir, readdir, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getUploadsRoot } from './storage.config';
 
@@ -18,6 +18,10 @@ const STORAGE_KEY_PATTERN =
  */
 export function createStorageKey(extension: StorageKeyExtension): string {
   return `${randomUUID()}${extension}`;
+}
+
+export function isStorageKey(value: string): boolean {
+  return STORAGE_KEY_PATTERN.test(value);
 }
 
 export class InvalidStorageKeyError extends Error {
@@ -39,7 +43,7 @@ export class FileStorageService implements OnModuleInit {
    * Matching the generated format is what keeps the result inside the root.
    */
   resolvePath(storageKey: string): string {
-    if (!STORAGE_KEY_PATTERN.test(storageKey)) {
+    if (!isStorageKey(storageKey)) {
       throw new InvalidStorageKeyError();
     }
 
@@ -51,6 +55,51 @@ export class FileStorageService implements OnModuleInit {
   }
 
   async remove(storageKey: string): Promise<void> {
-    await unlink(this.resolvePath(storageKey));
+    try {
+      await unlink(this.resolvePath(storageKey));
+    } catch (error) {
+      if (!isEnoent(error)) {
+        throw error;
+      }
+    }
   }
+
+  /**
+   * Deletes generated upload files older than `maxAgeMs`. Names that are not
+   * storage keys are left alone so a misconfigured root cannot wipe itself.
+   */
+  async removeStaleFiles(maxAgeMs: number): Promise<number> {
+    const names = await readdir(this.root);
+    const cutoff = Date.now() - maxAgeMs;
+    let removed = 0;
+
+    for (const name of names) {
+      if (!isStorageKey(name)) {
+        continue;
+      }
+
+      try {
+        const info = await stat(this.resolvePath(name));
+        if (info.mtimeMs > cutoff) {
+          continue;
+        }
+
+        await this.remove(name);
+        removed += 1;
+      } catch {
+        // A file may vanish between readdir and unlink; keep sweeping.
+      }
+    }
+
+    return removed;
+  }
+}
+
+function isEnoent(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'ENOENT'
+  );
 }

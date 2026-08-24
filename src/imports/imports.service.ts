@@ -8,6 +8,7 @@ import { CancellationRequestsService } from '../cancellation-requests/cancellati
 import { JobsService } from '../jobs/jobs.service';
 import { RabbitmqPublisherService } from '../rabbitmq-publisher/rabbitmq-publisher.service';
 import { RejectedTransactionLinesService } from '../rejected-transaction-lines/rejected-transaction-lines.service';
+import { FileStorageService } from '../storage/file-storage.service';
 import { TransactionLinesRepository } from '../transaction-lines/transaction-lines.repository';
 import { ImportRejectionRto } from './rto/import-rejection.rto';
 import {
@@ -21,7 +22,7 @@ import {
 import {
   RISK_LEVEL_LOW_MAX,
   RISK_LEVEL_MEDIUM_MAX,
-} from 'src/transaction-lines/transaction-line.constants';
+} from '../transaction-lines/transaction-line.constants';
 
 @Injectable()
 export class ImportsService {
@@ -31,17 +32,26 @@ export class ImportsService {
     private readonly transactionLinesRepository: TransactionLinesRepository,
     private readonly cancellationRequestsService: CancellationRequestsService,
     private readonly rejectedTransactionLinesService: RejectedTransactionLinesService,
+    private readonly fileStorage: FileStorageService,
   ) {}
 
   async createImport(idempotencyKey: string, storageKey: string): Promise<Job> {
     const { job, created } =
       await this.jobsService.createImportJob(idempotencyKey);
 
-    if (created) {
+    if (!created) {
+      await this.fileStorage.remove(storageKey);
+      return job;
+    }
+
+    try {
       await this.rabbitmqPublisher.publishProcessTransactionJob({
         jobId: job.id,
         storageKey,
       });
+    } catch (error) {
+      await this.fileStorage.remove(storageKey);
+      throw error;
     }
 
     return job;

@@ -2,10 +2,15 @@ import 'dotenv/config';
 import { VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
+import { MAX_JSON_BODY_BYTES } from './imports/request-limits';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  app.use(json({ limit: MAX_JSON_BODY_BYTES }));
+  app.use(urlencoded({ extended: true, limit: MAX_JSON_BODY_BYTES }));
 
   app.enableVersioning({
     type: VersioningType.URI,
@@ -23,4 +28,4 @@ async function bootstrap() {
   app.enableShutdownHooks();
   await app.listen(process.env.PORT ?? 3000);
 }
-bootstrap();
+void bootstrap();

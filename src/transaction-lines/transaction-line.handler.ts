@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { createInterface } from 'node:readline';
 import { CancellationRequestsService } from '../cancellation-requests/cancellation-requests.service';
 import { JobsService } from '../jobs/jobs.service';
+import { sanitizeForLog } from '../logging/sanitize-for-log';
 import { RabbitmqConsumerService } from '../rabbitmq-consumer/rabbitmq-consumer.service';
 import type { ProcessTransactionJobMessage } from '../rabbitmq/rabbitmq.messages';
 import { RejectedTransactionLinesService } from '../rejected-transaction-lines/rejected-transaction-lines.service';
@@ -48,8 +49,18 @@ export class TransactionLineHandler implements OnModuleInit {
   }
 
   private async handle(message: ProcessTransactionJobMessage): Promise<void> {
+    try {
+      await this.processJob(message);
+    } finally {
+      await this.removeUpload(message.storageKey);
+    }
+  }
+
+  private async processJob(
+    message: ProcessTransactionJobMessage,
+  ): Promise<void> {
     this.logger.log(
-      `Received PROCESS_TRANSACTION_JOB for job ${message.jobId}`,
+      `Received PROCESS_TRANSACTION_JOB for job ${sanitizeForLog(message.jobId)}`,
     );
 
     const counts: JobProgressCounts = {
@@ -106,7 +117,7 @@ export class TransactionLineHandler implements OnModuleInit {
     await this.jobsService.update(message.jobId, counts);
 
     this.logger.log(
-      `Job ${message.jobId} validation/persist complete: ` +
+      `Job ${sanitizeForLog(message.jobId)} validation/persist complete: ` +
         `processed=${counts.processed} accepted=${counts.accepted} ` +
         `rejected=${counts.rejected} duplicates=${counts.duplicates}`,
     );
@@ -123,7 +134,7 @@ export class TransactionLineHandler implements OnModuleInit {
       completedAt: new Date(),
     });
 
-    this.logger.log(`Job ${message.jobId} marked completed`);
+    this.logger.log(`Job ${sanitizeForLog(message.jobId)} marked completed`);
   }
 
   /**
@@ -155,7 +166,7 @@ export class TransactionLineHandler implements OnModuleInit {
 
       scored += risks.length;
       this.logger.log(
-        `Job ${jobId} risk calculation progress: scored=${scored}`,
+        `Job ${sanitizeForLog(jobId)} risk calculation progress: scored=${scored}`,
       );
 
       if (lines.length < this.riskBatchSize) {
@@ -164,7 +175,9 @@ export class TransactionLineHandler implements OnModuleInit {
       skip += lines.length;
     }
 
-    this.logger.log(`Job ${jobId} risk calculation complete: scored=${scored}`);
+    this.logger.log(
+      `Job ${sanitizeForLog(jobId)} risk calculation complete: scored=${scored}`,
+    );
     return false;
   }
 
@@ -190,8 +203,18 @@ export class TransactionLineHandler implements OnModuleInit {
       completedAt: new Date(),
     });
 
-    this.logger.log(`Job ${jobId} cancelled`);
+    this.logger.log(`Job ${sanitizeForLog(jobId)} cancelled`);
     return true;
+  }
+
+  private async removeUpload(storageKey: string): Promise<void> {
+    try {
+      await this.fileStorage.remove(storageKey);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to remove upload ${sanitizeForLog(storageKey)}: ${sanitizeForLog(error)}`,
+      );
+    }
   }
 
   /**

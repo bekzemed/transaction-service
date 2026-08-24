@@ -3,6 +3,7 @@ import { CancellationRequestsModule } from '../cancellation-requests/cancellatio
 import { JobsModule } from '../jobs/jobs.module';
 import { RejectedTransactionLinesModule } from '../rejected-transaction-lines/rejected-transaction-lines.module';
 import { TransactionLinesRepository } from '../transaction-lines/transaction-lines.repository';
+import { CleanupUploadedFileInterceptor } from './interceptors/cleanup-uploaded-file.interceptor';
 import { ImportsController } from './imports.controller';
 import { ImportsService } from './imports.service';
 
@@ -13,6 +14,10 @@ import { ImportsService } from './imports.service';
     RejectedTransactionLinesModule,
   ],
   controllers: [ImportsController],
-  providers: [ImportsService, TransactionLinesRepository],
+  providers: [
+    ImportsService,
+    TransactionLinesRepository,
+    CleanupUploadedFileInterceptor,
+  ],
 })
 export class ImportsModule {}

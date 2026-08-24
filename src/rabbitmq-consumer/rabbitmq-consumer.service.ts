@@ -9,12 +9,16 @@ import type {
   ChannelWrapper,
 } from 'amqp-connection-manager';
 import type { ConfirmChannel, ConsumeMessage } from 'amqplib';
+import { sanitizeForLog } from '../logging/sanitize-for-log';
 import { getRabbitmqConfig } from '../rabbitmq/rabbitmq.config';
 import {
   assertImportTopology,
   createRabbitmqConnection,
 } from '../rabbitmq/rabbitmq.connection';
-import type { ProcessTransactionJobMessage } from '../rabbitmq/rabbitmq.messages';
+import {
+  isProcessTransactionJobMessage,
+  type ProcessTransactionJobMessage,
+} from '../rabbitmq/rabbitmq.messages';
 
 export type ProcessTransactionJobHandler = (
   message: ProcessTransactionJobMessage,
@@ -87,17 +91,32 @@ export class RabbitmqConsumerService
     channel: ConfirmChannel,
     message: ConsumeMessage,
   ): Promise<void> {
+    let parsed: unknown;
     try {
-      const payload = JSON.parse(
-        message.content.toString(),
-      ) as ProcessTransactionJobMessage;
+      parsed = JSON.parse(message.content.toString()) as unknown;
+    } catch {
+      this.logger.error(
+        'Rejected PROCESS_TRANSACTION_JOB: payload is not JSON',
+      );
+      channel.nack(message, false, false);
+      return;
+    }
 
-      await this.handler!(payload);
+    if (!isProcessTransactionJobMessage(parsed)) {
+      this.logger.error(
+        `Rejected PROCESS_TRANSACTION_JOB payload: ${sanitizeForLog(parsed)}`,
+      );
+      channel.nack(message, false, false);
+      return;
+    }
+
+    try {
+      await this.handler!(parsed);
       channel.ack(message);
     } catch (error) {
       this.logger.error(
-        'Failed to process PROCESS_TRANSACTION_JOB message',
-        error instanceof Error ? error.stack : error,
+        `Failed to process PROCESS_TRANSACTION_JOB for job ${sanitizeForLog(parsed.jobId)}`,
+        error instanceof Error ? error.stack : sanitizeForLog(error),
       );
       channel.nack(message, false, false);
     }

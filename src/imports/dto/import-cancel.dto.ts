@@ -5,6 +5,7 @@ export class ImportCancelDto {
     example: 'Duplicate file uploaded in error',
     nullable: true,
     type: String,
+    maxLength: 500,
   })
   readonly reason?: string | null;
 }
