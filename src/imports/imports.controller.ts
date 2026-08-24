@@ -9,6 +9,8 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -22,12 +24,15 @@ import {
   ApiOperation,
   ApiParam,
   ApiPayloadTooLargeResponse,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { NdjjsonFileInterceptor } from './interceptors/ndjson-file.interceptor';
 import { ImportsService } from './imports.service';
 import { ImportCancelDto } from './dto/import-cancel.dto';
 import { ImportCancelRto } from './rto/import-cancel.rto';
+import { ImportRejectionRto } from './rto/import-rejection.rto';
 import { ImportResponseRto } from './rto/import-response.rto';
 import { ImportStatusRto } from './rto/import-status.rto';
 import { ImportSummaryRto } from './rto/import-summary.rto';
@@ -108,6 +113,67 @@ export class ImportsController {
     return this.importsService.getImportSummary(id);
   }
 
+  @Get(':id/rejections')
+  @ApiOperation({
+    summary: 'Get rejected records',
+    description:
+      'Returns a page of rejected transaction lines for an import job. ' +
+      'Use the X-Next-Cursor response header as the cursor query parameter to fetch the next page. ' +
+      'The header is omitted when there is no next page.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Import job ID',
+    format: 'uuid',
+    example: 'f6a7f6de-6a52-4c4e-9d5e-df6a2f9b57a1',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    example: 50,
+    description: 'Page size. Defaults to 50. Maximum 500.',
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    type: String,
+    description:
+      "Opaque pagination token from the previous page's X-Next-Cursor header.",
+  })
+  @ApiOkResponse({
+    type: [ImportRejectionRto],
+    headers: {
+      'X-Next-Cursor': {
+        description:
+          'Opaque cursor for the next page. Omitted when there is no next page.',
+        schema: { type: 'string' },
+      },
+    },
+  })
+  @ApiBadRequestResponse({
+    description: 'Invalid import job ID, limit, or cursor',
+  })
+  @ApiNotFoundResponse({ description: 'Import job not found' })
+  async getImportRejections(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('limit') limit: string | undefined,
+    @Query('cursor') cursor: string | undefined,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<{ items: ImportRejectionRto[]; next: string | null }> {
+    const { items, nextCursor } = await this.importsService.getImportRejections(
+      id,
+      limit,
+      cursor,
+    );
+
+    if (nextCursor) {
+      response.setHeader('X-Next-Cursor', nextCursor);
+    }
+
+    return { items, next: nextCursor };
+  }
+
   @Post(':id/cancel')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
@@ -140,8 +206,10 @@ export class ImportsController {
     }
 
     const reason = body?.reason?.trim() ? body.reason.trim() : null;
-    const cancellationRequest =
-      await this.importsService.requestCancellation(id, reason);
+    const cancellationRequest = await this.importsService.requestCancellation(
+      id,
+      reason,
+    );
     return ImportCancelRto.fromCancellationRequest(cancellationRequest);
   }
 

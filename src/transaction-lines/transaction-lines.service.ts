@@ -5,9 +5,9 @@ import { TransactionLinesRepository } from './transaction-lines.repository';
 import {
   ISO_8601_PATTERN,
   MAX_DESCRIPTION_LENGTH,
-  MAX_RAW_VALUE_CHARS,
   SUPPORTED_CURRENCIES,
 } from './transaction-line.constants';
+import { limitRawValue } from './limit-raw-value';
 import type {
   FingerprintInput,
   NormalizedTransaction,
@@ -51,7 +51,7 @@ export class TransactionLinesService {
       normalized = this.normalize(input);
     } catch (error) {
       if (error instanceof NormalizationError) {
-        return this.reject(error.code, error.message, this.limitRaw(raw));
+        return this.reject(error.code, error.message, raw);
       }
       throw error;
     }
@@ -160,7 +160,7 @@ export class TransactionLinesService {
       return this.reject(
         'UNSUPPORTED_CURRENCY',
         `Currency ${value.currency} is not supported`,
-        this.limitRaw(raw),
+        raw,
       );
     }
 
@@ -312,29 +312,8 @@ export class TransactionLinesService {
       ok: false,
       reason,
       message,
-      rawValue: this.limitRaw(rawValue),
+      rawValue: limitRawValue(rawValue),
     };
-  }
-
-  private limitRaw(raw: unknown): unknown {
-    if (typeof raw === 'string') {
-      return raw.length > MAX_RAW_VALUE_CHARS
-        ? raw.slice(0, MAX_RAW_VALUE_CHARS)
-        : raw;
-    }
-
-    try {
-      const serialized = JSON.stringify(raw);
-      if (serialized === undefined) {
-        return null;
-      }
-      if (serialized.length <= MAX_RAW_VALUE_CHARS) {
-        return raw;
-      }
-      return serialized.slice(0, MAX_RAW_VALUE_CHARS);
-    } catch {
-      return null;
-    }
   }
 }
 

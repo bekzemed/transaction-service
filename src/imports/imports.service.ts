@@ -7,7 +7,9 @@ import type { CancellationRequest, Job } from '../../generated/prisma/client';
 import { CancellationRequestsService } from '../cancellation-requests/cancellation-requests.service';
 import { JobsService } from '../jobs/jobs.service';
 import { RabbitmqPublisherService } from '../rabbitmq-publisher/rabbitmq-publisher.service';
+import { RejectedTransactionLinesService } from '../rejected-transaction-lines/rejected-transaction-lines.service';
 import { TransactionLinesRepository } from '../transaction-lines/transaction-lines.repository';
+import { ImportRejectionRto } from './rto/import-rejection.rto';
 import {
   ImportSummaryAccountRto,
   ImportSummaryCurrencyRto,
@@ -28,6 +30,7 @@ export class ImportsService {
     private readonly rabbitmqPublisher: RabbitmqPublisherService,
     private readonly transactionLinesRepository: TransactionLinesRepository,
     private readonly cancellationRequestsService: CancellationRequestsService,
+    private readonly rejectedTransactionLinesService: RejectedTransactionLinesService,
   ) {}
 
   async createImport(idempotencyKey: string, storageKey: string): Promise<Job> {
@@ -52,6 +55,25 @@ export class ImportsService {
     }
 
     return job;
+  }
+
+  async getImportRejections(
+    id: string,
+    limit?: string,
+    cursor?: string,
+  ): Promise<{ items: ImportRejectionRto[]; nextCursor: string | null }> {
+    await this.getImport(id);
+
+    const page = await this.rejectedTransactionLinesService.findPage(
+      id,
+      limit,
+      cursor,
+    );
+
+    return {
+      items: page.items.map((row) => ImportRejectionRto.from(row)),
+      nextCursor: page.nextCursor,
+    };
   }
 
   async requestCancellation(

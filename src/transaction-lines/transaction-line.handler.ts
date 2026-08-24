@@ -4,9 +4,11 @@ import { CancellationRequestsService } from '../cancellation-requests/cancellati
 import { JobsService } from '../jobs/jobs.service';
 import { RabbitmqConsumerService } from '../rabbitmq-consumer/rabbitmq-consumer.service';
 import type { ProcessTransactionJobMessage } from '../rabbitmq/rabbitmq.messages';
+import { RejectedTransactionLinesService } from '../rejected-transaction-lines/rejected-transaction-lines.service';
 import { FileStorageService } from '../storage/file-storage.service';
 import { RiskCalculationService } from './risk/risk-calculation.service';
 import { DEFAULT_MAX_LINE_BYTES } from './transaction-line.constants';
+import { limitRawValue } from './limit-raw-value';
 import type {
   BatchValidationResult,
   JobProgressCounts,
@@ -35,6 +37,7 @@ export class TransactionLineHandler implements OnModuleInit {
     private readonly jobsService: JobsService,
     private readonly riskCalculationService: RiskCalculationService,
     private readonly cancellationRequestsService: CancellationRequestsService,
+    private readonly rejectedTransactionLinesService: RejectedTransactionLinesService,
   ) {}
 
   onModuleInit(): void {
@@ -192,8 +195,8 @@ export class TransactionLineHandler implements OnModuleInit {
   }
 
   /**
-   * Validates the batch, persists rows that pass, and returns outcomes so the
-   * handler can update counts and drive later pipeline stages.
+   * Validates the batch, persists accepted and rejected rows, and returns
+   * outcomes so the handler can update counts and drive later pipeline stages.
    */
   private async processBatchValidation(
     batch: FileLine[],
@@ -201,14 +204,11 @@ export class TransactionLineHandler implements OnModuleInit {
   ): Promise<BatchValidationResult> {
     const { passed, rejected } = this.parseTransactions(batch, jobId);
 
-    if (passed.length === 0) {
-      return { rejected, inserted: [], duplicateCount: 0 };
-    }
-
     const inserted = await this.transactionLinesService.createManyAndReturn(
       passed,
       { skipDuplicates: true },
     );
+    await this.rejectedTransactionLinesService.createMany(jobId, rejected);
 
     return {
       rejected,
@@ -241,7 +241,7 @@ export class TransactionLineHandler implements OnModuleInit {
           lineNumber,
           reason: 'LINE_TOO_LONG',
           message: `Line exceeds maximum length of ${this.maxLineBytes} bytes`,
-          rawValue: content.slice(0, 256),
+          rawValue: limitRawValue(content),
         });
         continue;
       }
@@ -254,7 +254,7 @@ export class TransactionLineHandler implements OnModuleInit {
           lineNumber,
           reason: 'INVALID_JSON',
           message: 'Line is not valid JSON',
-          rawValue: content.slice(0, 256),
+          rawValue: limitRawValue(content),
         });
         continue;
       }
@@ -267,7 +267,7 @@ export class TransactionLineHandler implements OnModuleInit {
           lineNumber,
           reason: result.reason,
           message: result.message,
-          rawValue: result.rawValue,
+          rawValue: limitRawValue(content),
         });
       }
     }

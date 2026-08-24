@@ -32,8 +32,9 @@ model Job {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt @default(now())
 
-  cancellationRequest CancellationRequest?
-  transactionLines    TransactionLine[]
+  cancellationRequest        CancellationRequest?
+  transactionLines           TransactionLine[]
+  rejectedTransactionLines   RejectedTransactionLine[]
 
   @@index([status])
   @@map("jobs")
@@ -69,4 +70,20 @@ model CancellationRequest {
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@map("cancellation_requests")
+}
+
+model RejectedTransactionLine {
+  id         String   @id @default(uuid())
+  jobId      String
+  lineNumber Int
+  reason     String
+  message    String
+  rawValue   String
+  createdAt  DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, lineNumber])
+  @@index([jobId])
+  @@map("rejected_transaction_lines")
 }

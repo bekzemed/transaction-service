@@ -28,12 +28,12 @@ export interface TransactionRejection {
   lineNumber: number;
   reason: RejectionCode;
   message: string;
-  rawValue: unknown;
+  rawValue: string;
 }
 
 export type ValidateResult =
   | { ok: true; value: NormalizedTransaction }
-  | { ok: false; reason: RejectionCode; message: string; rawValue: unknown };
+  | { ok: false; reason: RejectionCode; message: string; rawValue: string };
 
 export interface ParseTransactionsResult {
   passed: NormalizedTransaction[];
