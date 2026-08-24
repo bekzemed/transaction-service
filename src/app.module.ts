@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { HealthModule } from './health/health.module';
 import { ImportsModule } from './imports/imports.module';
 import { JobsModule } from './jobs/jobs.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -18,6 +19,7 @@ import { StorageModule } from './storage/storage.module';
     RabbitmqPublisherModule,
     JobsModule,
     ImportsModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
