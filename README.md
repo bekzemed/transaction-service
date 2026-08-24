@@ -49,6 +49,54 @@ $ npm run start:prod
 
 Run either process alone with `npm run start:api:dev` or `npm run start:processor:dev`.
 
+## Event loop monitoring
+
+Both the API process and the processor process log Node.js event-loop health on a timer (default 10 seconds; override with `MONITORING_INTERVAL_MS`). Metrics are logs only — there is no `/metrics` HTTP endpoint, so scraping does not compete with latency-sensitive routes.
+
+Each line includes:
+
+- **Event-loop delay** (`mean`, `p50`, `p99`, `max` in milliseconds) from `perf_hooks.monitorEventLoopDelay()`
+- **Event-loop utilization** for the sampling window from `performance.eventLoopUtilization()`
+- **Process CPU usage** as a percentage of one core from `process.cpuUsage()` (can exceed 100% when worker threads use other cores)
+- **Heap usage** (`heapUsedBytes`, `heapTotalBytes`) and **RSS** from `process.memoryUsage()`
+
+### How event-loop blocking is detected
+
+`monitorEventLoopDelay()` schedules a timer at a 20 ms resolution and records how late it fires. If the main thread is busy with synchronous work, that timer runs late and delay `p99` / `max` rise. Event-loop utilization approaching `1.0` in the same window confirms the loop spent almost all of its time in JavaScript rather than idle.
+
+### Thresholds that may indicate a problem
+
+These are starting points, not hard alerts. Look for values that stay elevated across several samples, not a single spike.
+
+| Signal | Warning | Problem |
+| --- | --- | --- |
+| Delay p99 | > 50 ms | > 100 ms |
+| Delay max | > 100 ms | > 250 ms |
+| Event-loop utilization | > 0.7 | > 0.9 |
+| CPU percent (main-thread bound) | high together with high utilization | ~100%+ together with high delay |
+| Heap | `heapUsed` climbing toward `heapTotal` | repeated growth after GC, or RSS rising without bound |
+
+Idle delay of ~20 ms is expected because that is the histogram resolution.
+
+### CPU saturation vs downstream I/O latency
+
+**CPU saturation** shows up as high `cpuPercent` *and* high event-loop utilization / delay. The process is busy executing JavaScript (or, on the processor, worker-thread risk scoring that still counts toward `process.cpuUsage()`).
+
+**Downstream I/O latency** (Postgres, RabbitMQ, disk) looks different: event-loop delay and utilization stay low because `await` yields the loop, but jobs or HTTP responses are still slow. The loop is healthy; the wait is outside the process.
+
+### What in this codebase can block the event loop
+
+- **Processor, main thread:** `JSON.parse` and validation of each import batch (`parseTransactions`), plus building fingerprint input. Batches are bounded (`IMPORT_BATCH_SIZE`, default 100) so this work yields at `await` points between batches.
+- **Processor, not the loop:** risk scoring runs on the worker-thread pool, so the simulated CPU loop does not stall message handling or database I/O.
+- **API:** Multer streams the upload to disk (not into memory). Request handlers then do relatively small Prisma / RabbitMQ work. Large NDJSON parsing does not run in the API process.
+
+### How latency-sensitive endpoints are protected
+
+- The API and the processor are **separate Node processes**. Import parsing, validation, persistence, and risk scoring never share the API event loop, so `GET /health/*`, `GET /v1/imports/:id`, cancel, summary, and rejection paging stay off the heavy path.
+- Uploads are streamed to disk; the create-import handler only writes a job row and publishes a queue message.
+- RabbitMQ `prefetch` caps how many jobs the processor has in flight.
+- Monitoring itself is a cheap snapshot plus `console`-style log on an `unref`'d interval, and is not exposed over HTTP.
+
 ## Run tests
 
 ```bash

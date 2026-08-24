@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { MonitoringModule } from './monitoring/monitoring.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RabbitmqConsumerModule } from './rabbitmq-consumer/rabbitmq-consumer.module';
 import { StorageModule } from './storage/storage.module';
@@ -14,6 +15,7 @@ import { TransactionLinesModule } from './transaction-lines/transaction-lines.mo
     StorageModule,
     RabbitmqConsumerModule,
     TransactionLinesModule,
+    MonitoringModule,
   ],
 })
 export class ProcessorModule {}
