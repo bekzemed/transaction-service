@@ -27,6 +27,7 @@ import { NdjjsonFileInterceptor } from './interceptors/ndjson-file.interceptor';
 import { ImportsService } from './imports.service';
 import { ImportResponseRto } from './rto/import-response.rto';
 import { ImportStatusRto } from './rto/import-status.rto';
+import { ImportSummaryRto } from './rto/import-summary.rto';
 
 @ApiTags('imports')
 @Controller({ path: 'imports', version: '1' })
@@ -80,6 +81,28 @@ export class ImportsController {
     );
 
     return ImportResponseRto.fromJob(job);
+  }
+
+  @Get(':id/summary')
+  @ApiOperation({
+    summary: 'Get reconciliation summary',
+    description:
+      'Returns accepted/rejected/duplicate totals for an import job, ' +
+      'plus transaction-line aggregations by currency, risk level, merchant, and account.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Import job ID',
+    format: 'uuid',
+    example: 'f6a7f6de-6a52-4c4e-9d5e-df6a2f9b57a1',
+  })
+  @ApiOkResponse({ type: ImportSummaryRto })
+  @ApiBadRequestResponse({ description: 'Invalid import job ID' })
+  @ApiNotFoundResponse({ description: 'Import job not found' })
+  async getImportSummary(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ImportSummaryRto> {
+    return this.importsService.getImportSummary(id);
   }
 
   @Get(':id')

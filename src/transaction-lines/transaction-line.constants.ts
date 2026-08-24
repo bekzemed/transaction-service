@@ -47,3 +47,9 @@ export const MAX_DESCRIPTION_LENGTH = 500;
 /** ISO-8601 with required date and time; fractional seconds optional. */
 export const ISO_8601_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/** Inclusive upper bound of the low risk bucket (scores 1–39). */
+export const RISK_LEVEL_LOW_MAX = 39;
+
+/** Inclusive upper bound of the medium risk bucket (scores 40–70). High is 71–100. */
+export const RISK_LEVEL_MEDIUM_MAX = 70;

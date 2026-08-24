@@ -2,12 +2,26 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Job } from '../../generated/prisma/client';
 import { JobsService } from '../jobs/jobs.service';
 import { RabbitmqPublisherService } from '../rabbitmq-publisher/rabbitmq-publisher.service';
+import { TransactionLinesRepository } from '../transaction-lines/transaction-lines.repository';
+import {
+  ImportSummaryAccountRto,
+  ImportSummaryCurrencyRto,
+  ImportSummaryMerchantRto,
+  ImportSummaryRiskLevelRto,
+  ImportSummaryRto,
+  ImportSummaryTotalsRto,
+} from './rto/import-summary.rto';
+import {
+  RISK_LEVEL_LOW_MAX,
+  RISK_LEVEL_MEDIUM_MAX,
+} from 'src/transaction-lines/transaction-line.constants';
 
 @Injectable()
 export class ImportsService {
   constructor(
     private readonly jobsService: JobsService,
     private readonly rabbitmqPublisher: RabbitmqPublisherService,
+    private readonly transactionLinesRepository: TransactionLinesRepository,
   ) {}
 
   async createImport(idempotencyKey: string, storageKey: string): Promise<Job> {
@@ -32,5 +46,74 @@ export class ImportsService {
     }
 
     return job;
+  }
+
+  async getImportSummary(id: string): Promise<ImportSummaryRto> {
+    const job = await this.getImport(id);
+
+    const [
+      currencyResult,
+      merchantResult,
+      accountResult,
+      lowResult,
+      mediumResult,
+      highResult,
+    ] = await Promise.allSettled([
+      this.transactionLinesRepository.groupBy(job.id, 'currency'),
+      this.transactionLinesRepository.groupBy(job.id, 'merchantId'),
+      this.transactionLinesRepository.groupBy(job.id, 'accountId'),
+      this.transactionLinesRepository.count({
+        jobId: job.id,
+        risk: { gte: 1, lte: RISK_LEVEL_LOW_MAX },
+      }),
+      this.transactionLinesRepository.count({
+        jobId: job.id,
+        risk: {
+          gte: RISK_LEVEL_LOW_MAX + 1,
+          lte: RISK_LEVEL_MEDIUM_MAX,
+        },
+      }),
+      this.transactionLinesRepository.count({
+        jobId: job.id,
+        risk: { gt: RISK_LEVEL_MEDIUM_MAX },
+      }),
+    ]);
+
+    if (currencyResult.status === 'rejected') {
+      throw currencyResult.reason;
+    }
+
+    if (merchantResult.status === 'rejected') {
+      throw merchantResult.reason;
+    }
+
+    if (accountResult.status === 'rejected') {
+      throw accountResult.reason;
+    }
+
+    if (lowResult.status === 'rejected') {
+      throw lowResult.reason;
+    }
+
+    if (mediumResult.status === 'rejected') {
+      throw mediumResult.reason;
+    }
+
+    if (highResult.status === 'rejected') {
+      throw highResult.reason;
+    }
+
+    return ImportSummaryRto.from(
+      job.id,
+      ImportSummaryTotalsRto.fromJob(job),
+      ImportSummaryCurrencyRto.fromRows(currencyResult.value),
+      ImportSummaryRiskLevelRto.from(
+        lowResult.value,
+        mediumResult.value,
+        highResult.value,
+      ),
+      ImportSummaryMerchantRto.fromRows(merchantResult.value),
+      ImportSummaryAccountRto.fromRows(accountResult.value),
+    );
   }
 }

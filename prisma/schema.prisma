@@ -56,9 +56,7 @@ model TransactionLine {
   job Job @relation(fields: [jobId], references: [id], onDelete: Restrict)
 
   @@index([jobId])
-  @@index([accountId])
-  @@index([merchantId])
-  @@index([currency])
+  @@index([risk])
   @@map("transaction_lines")
 }
 

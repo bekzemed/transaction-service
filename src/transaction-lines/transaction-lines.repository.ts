@@ -43,4 +43,20 @@ export class TransactionLinesRepository {
       ),
     );
   }
+
+  async groupBy<K extends Prisma.TransactionLineScalarFieldEnum>(
+    importId: string,
+    by: K,
+  ) {
+    return this.prisma.transactionLine.groupBy({
+      by: [by],
+      where: { jobId: importId },
+      _count: { _all: true },
+      _sum: { amount: true },
+    });
+  }
+
+  async count(where: Prisma.TransactionLineWhereInput): Promise<number> {
+    return this.prisma.transactionLine.count({ where });
+  }
 }
